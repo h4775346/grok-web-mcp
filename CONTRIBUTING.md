@@ -6,7 +6,7 @@ Thanks for helping! Issues and pull requests are welcome.
 
 ```bash
 git clone https://github.com/h4775346/grok-web-mcp && cd grok-web-mcp
-uv venv && uv pip install -e ".[dev]"
+uv sync --extra dev
 uv run pytest
 uv run ruff check . && uv run ruff format --check .
 ```

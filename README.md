@@ -151,15 +151,26 @@ Use the same Chrome profile. That's it. Ask your assistant:
 <summary>Example calls</summary>
 
 ```python
-grok_generate_image(prompt="Cinematic night rooftop in Cairo, warm neon, 35mm",
-                    aspect="16:9", n=2, mode="quality", out_dir="rooftop", size="1344x768")
+grok_generate_image(
+    prompt="Cinematic night rooftop in Cairo, warm neon, 35mm",
+    aspect="16:9",
+    n=2,
+    mode="quality",
+    out_dir="rooftop",
+    size="1344x768",
+)
 
-grok_batch(out_dir="covers", jobs=[
-    {"prompt": "minimal album cover, orange sun over the Nile", "name": "cover_a", "aspect": "1:1", "n": 2},
-    {"prompt": "retro 80s synthwave album cover", "name": "cover_b", "aspect": "1:1"}])
+grok_batch(
+    out_dir="covers",
+    jobs=[
+        {"prompt": "minimal album cover, orange sun over the Nile", "name": "cover_a", "aspect": "1:1", "n": 2},
+        {"prompt": "retro 80s synthwave album cover", "name": "cover_b", "aspect": "1:1"},
+    ],
+)
 
-grok_generate_video(prompt="slow push-in, hair moving in the wind",
-                    image_path="rooftop/grok_1.jpg", aspect="16:9", out_dir="clips")
+grok_generate_video(
+    prompt="slow push-in, hair moving in the wind", image_path="rooftop/grok_1.jpg", aspect="16:9", out_dir="clips"
+)
 ```
 </details>
 
@@ -217,7 +228,7 @@ if something breaks, please [open an issue](https://github.com/h4775346/grok-web
 
 ```bash
 git clone https://github.com/h4775346/grok-web-mcp && cd grok-web-mcp
-uv venv && uv pip install -e ".[dev]"
+uv sync --extra dev
 uv run pytest        # end-to-end test with a fake extension: no Chrome, no grok.com, no quota used
 uv run ruff check .
 ```
