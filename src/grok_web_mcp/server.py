@@ -11,7 +11,10 @@ Auth (loopback only):
   * the Chrome extension is recognised by its chrome-extension://<id> Origin. The first extension id that connects
     is pinned in extensions.json (trust on first use); any other extension id is refused until it is added there
     or to GROK_WEB_MCP_EXTENSION_IDS;
-  * other local clients (peer servers) must present the random token from token.txt.
+  * other local clients (a second grok-web-mcp session) present the random token from token.txt, read automatically
+    by both sessions. Optional: require_peer_token=false skips it. The extension never needs it.
+
+Settings: see settings.py (config.json + GROK_WEB_MCP_* environment variables).
 
 Quota guard: every Grok submission uses the user's Imagine quota, so the hub keeps a per-day ledger (usage.json,
 written only by the hub) and refuses jobs over the limits in limits.json.
@@ -37,19 +40,22 @@ from websockets.asyncio.client import connect
 from websockets.asyncio.server import serve
 from websockets.exceptions import ConnectionClosed
 
-from . import __version__
+from . import __version__, settings
+from .settings import ASPECTS, CONFIG_FILE, HOME, MODES
 
-HOST = "127.0.0.1"
-PORT = int(os.environ.get("GROK_WEB_MCP_PORT", "8799"))
-HOME = Path(os.environ.get("GROK_WEB_MCP_HOME", Path.home() / ".grok-web-mcp")).expanduser()
-OUTPUT = Path(os.environ.get("GROK_WEB_MCP_OUTPUT_DIR", Path.home() / "grok-web-mcp")).expanduser()
+try:
+    S, SOURCES = settings.load()
+except settings.SettingsError as _e:
+    sys.exit(f"[grok-web-mcp] invalid setting: {_e}")
+
+HOST = "127.0.0.1"  # never configurable: the bridge is loopback only
+PORT = S["port"]
+OUTPUT = Path(S["output_dir"]).expanduser()
 TOKEN_FILE = HOME / "token.txt"
 USAGE_FILE = HOME / "usage.json"
 LIMITS_FILE = HOME / "limits.json"
 EXTENSIONS_FILE = HOME / "extensions.json"
 DEFAULT_LIMITS = {"max_image_submissions_per_day": 30, "max_videos_per_day": 5, "max_jobs_per_batch": 12, "confirm_over": 10}
-ASPECTS = ("16:9", "9:16", "1:1", "2:3", "3:2")
-MODES = ("", "speed", "quality")  # "" = leave the page's Speed/Quality control as it is
 PER_SUBMIT = 2  # one Grok image submission returns 2 images
 EXT = {
     "image/jpeg": "jpg",
@@ -70,7 +76,10 @@ def log(*a):
     print("[grok-web-mcp]", *a, file=sys.stderr, flush=True)  # stdout belongs to the MCP protocol
 
 
-def load_token() -> str:
+def load_token() -> str | None:
+    """The peer token, created on first use. None when require_peer_token is off and there is no token file."""
+    if not S["require_peer_token"]:
+        return (TOKEN_FILE.read_text(encoding="utf-8").strip() or None) if TOKEN_FILE.exists() else None
     if TOKEN_FILE.exists():
         t = TOKEN_FILE.read_text(encoding="utf-8").strip()
         if t:
@@ -138,6 +147,8 @@ def record_usage(kind: str, generated: int = 0, kept: int = 0):
 
 
 def check_budget(images: int = 0, videos: int = 0):
+    if not S["quota_guard"]:
+        return
     lim, u = load_limits(), usage_today()
     for need, used_k, lim_k, what in (
         (images, "image_submissions", "max_image_submissions_per_day", "image submission"),
@@ -153,7 +164,7 @@ def check_budget(images: int = 0, videos: int = 0):
 
 # -------------------------------------------------------------------- extension pinning (trust on first use)
 def allowed_extensions() -> set[str]:
-    ids = set(filter(None, (s.strip() for s in os.environ.get("GROK_WEB_MCP_EXTENSION_IDS", "").split(","))))
+    ids = set(S["extension_ids"])
     raw = _read_json(EXTENSIONS_FILE)
     if isinstance(raw, dict):
         ids |= {str(i) for i in raw.get("allowed", [])}
@@ -161,6 +172,8 @@ def allowed_extensions() -> set[str]:
 
 
 def extension_allowed(ext_id: str) -> bool:
+    if not S["pin_extension"]:
+        return True
     ids = allowed_extensions()
     if not ids:
         _write_json(
@@ -176,7 +189,7 @@ def extension_allowed(ext_id: str) -> bool:
 
 
 class Hub:
-    def __init__(self, token: str):
+    def __init__(self, token: str | None):
         self.token = token
         self.role = None  # "hub" | "peer"
         self.server = None
@@ -219,8 +232,13 @@ class Hub:
                 )
                 await ws.close(4004, "extension not allowed")
                 return
-        elif not hmac.compare_digest(str(hello.get("token", "")).encode(), self.token.encode()):
-            await ws.send(json.dumps({"type": "error", "error": "bad token"}))
+        elif hello.get("role") == "extension":  # only a real chrome-extension origin may take the extension role
+            await ws.close(4004, "the extension role needs a chrome-extension origin")
+            return
+        elif S["require_peer_token"] and not hmac.compare_digest(
+            str(hello.get("token", "")).encode(), (self.token or "").encode()
+        ):
+            await ws.send(json.dumps({"type": "error", "error": "bad token (see the require_peer_token setting)"}))
             await ws.close(4001, "bad token")
             return
         if hello.get("role") == "extension":
@@ -323,6 +341,7 @@ class Hub:
             "extension": self.ext_info,
             "jobs_running_or_waiting": self.queued,
             "output_dir": str(OUTPUT),
+            "settings": dict(S),
         }
         if self.ext is None:
             st["hint"] = "open Chrome with the Grok Web MCP extension loaded; its badge turns green when connected"
@@ -338,7 +357,7 @@ class Hub:
     async def _run_via_hub(self, kind, params, timeout):
         try:
             async with connect(f"ws://{HOST}:{PORT}", max_size=MAX_MSG, open_timeout=5) as ws:
-                await ws.send(json.dumps({"role": "peer", "token": self.token}))
+                await ws.send(json.dumps({"role": "peer", "token": self.token or ""}))
                 await ws.send(json.dumps({"kind": kind, "params": params, "timeout": timeout}))
                 ans = json.loads(await asyncio.wait_for(ws.recv(), timeout + 1800))  # may wait in the hub's queue
         except (OSError, ConnectionClosed, asyncio.TimeoutError) as e:
@@ -451,6 +470,18 @@ async def grok_status() -> dict:
 
 
 @mcp.tool()
+async def grok_settings() -> dict:
+    """The settings in effect (defaults < config.json < GROK_WEB_MCP_* env vars), where each came from, and what each
+    one does. Settings are read when the server starts; restart the MCP client after changing them."""
+    return {
+        "settings": S,
+        "source": SOURCES,
+        "help": {k: v[1] for k, v in settings.OPTIONS.items()},
+        "files": {"config": str(CONFIG_FILE), "limits": str(LIMITS_FILE), "extensions": str(EXTENSIONS_FILE)},
+    }
+
+
+@mcp.tool()
 async def grok_usage() -> dict:
     """Today's Grok Imagine usage (image submissions, images generated/kept, videos) against the daily limits."""
     lim, u = load_limits(), usage_today()
@@ -458,6 +489,7 @@ async def grok_usage() -> dict:
         "date": _today(),
         "used": u,
         "limits": lim,
+        "quota_guard": S["quota_guard"],
         "remaining": {
             "image_submissions": max(0, lim["max_image_submissions_per_day"] - u["image_submissions"]),
             "videos": max(0, lim["max_videos_per_day"] - u["videos"]),
@@ -492,6 +524,7 @@ async def grok_set_limits(
 
 def _job(prompt, aspect, n, mode, max_side, size) -> dict:
     """Validate one image job; returns the normalized params + how many submissions it costs."""
+    aspect, n, mode = aspect or S["default_aspect"], n or S["default_n"], mode or S["default_mode"]
     if aspect not in ASPECTS:
         raise BridgeError(f"aspect must be one of {', '.join(ASPECTS)}")
     if not str(prompt).strip():
@@ -555,21 +588,22 @@ async def _image(j: dict, out_dir, name, timeout_s, keep_original) -> dict:
 @mcp.tool()
 async def grok_generate_image(
     prompt: str,
-    aspect: str = "16:9",
+    aspect: str = "",
     out_dir: str = "",
     name: str = "",
-    n: int = 1,
+    n: int = 0,
     mode: str = "",
     max_side: int = 0,
     size: str = "",
     keep_original: bool = False,
-    timeout_s: int = 180,
+    timeout_s: int = 0,
 ) -> dict:
     """Generate images with Grok Imagine in the user's logged-in Chrome (no API key; uses the user's own Grok
     plan and daily quota: see grok_usage(); jobs over the limits are refused).
 
+    Omitted aspect / n / mode / timeout_s use the configured defaults (see grok_settings).
     aspect: 16:9 | 9:16 | 1:1 | 2:3 | 3:2. n: images to keep, 1..4 (one submission gives 2; n=3/4 = 2 submissions).
-    mode: "speed" | "quality" | "" (leave the page's Speed/Quality control as it is; a warning if it is not found).
+    mode: "speed" | "quality" (a warning, not a failure, if the page control is not found).
     max_side: shrink saved files so the long side <= max_side (e.g. 1344). size: exact "WxH" (e.g. "1344x768"),
     scale to cover + center crop (overrides max_side). keep_original: also keep <file>_orig.<ext>.
     out_dir: absolute, or relative to the output root (GROK_WEB_MCP_OUTPUT_DIR, default ~/grok-web-mcp).
@@ -578,7 +612,7 @@ async def grok_generate_image(
     """
     j = _job(prompt, aspect, n, mode, max_side, size)
     check_budget(images=j["subs"])  # the whole job must fit before anything is submitted
-    return await _image(j, out_dir, name, timeout_s, keep_original)
+    return await _image(j, out_dir, name, timeout_s or S["image_timeout_s"], keep_original)
 
 
 @mcp.tool()
@@ -592,7 +626,7 @@ async def grok_batch(jobs: list[dict], out_dir: str = "", confirm: bool = False)
     lim = load_limits()
     if not jobs:
         raise BridgeError("empty batch")
-    if len(jobs) > lim["max_jobs_per_batch"]:
+    if S["quota_guard"] and len(jobs) > lim["max_jobs_per_batch"]:
         raise BridgeError(
             f"Grok budget: {len(jobs)} jobs > max_jobs_per_batch={lim['max_jobs_per_batch']}; split the "
             f"batch or raise the limit with grok_set_limits(max_jobs_per_batch=N) after asking the user."
@@ -603,8 +637,8 @@ async def grok_batch(jobs: list[dict], out_dir: str = "", confirm: bool = False)
             norm.append(
                 _job(
                     j.get("prompt", ""),
-                    j.get("aspect", "16:9"),
-                    j.get("n", 1),
+                    j.get("aspect", ""),
+                    j.get("n", 0),
                     j.get("mode", ""),
                     j.get("max_side", 0),
                     j.get("size", ""),
@@ -613,7 +647,7 @@ async def grok_batch(jobs: list[dict], out_dir: str = "", confirm: bool = False)
         except BridgeError as e:
             raise BridgeError(f"job {i} ({j.get('name')}): {e}; nothing was submitted") from None
     total = sum(j["subs"] for j in norm)
-    if total > lim["confirm_over"] and not confirm:
+    if S["quota_guard"] and total > lim["confirm_over"] and not confirm:
         raise BridgeError(
             f"this batch needs {total} Grok submissions (> confirm_over={lim['confirm_over']}); "
             f"ask the user, then call again with confirm=true. Nothing was submitted."
@@ -626,7 +660,11 @@ async def grok_batch(jobs: list[dict], out_dir: str = "", confirm: bool = False)
             continue
         try:
             r = await _image(
-                nj, j.get("out_dir", out_dir), j.get("name", ""), j.get("timeout_s", 180), bool(j.get("keep_original"))
+                nj,
+                j.get("out_dir", out_dir),
+                j.get("name", ""),
+                j.get("timeout_s") or S["image_timeout_s"],
+                bool(j.get("keep_original")),
             )
             results.append({"name": j.get("name"), **r})
         except BridgeError as e:
@@ -638,11 +676,12 @@ async def grok_batch(jobs: list[dict], out_dir: str = "", confirm: bool = False)
 
 @mcp.tool()
 async def grok_generate_video(
-    prompt: str, image_path: str = "", aspect: str = "16:9", out_dir: str = "", name: str = "", timeout_s: int = 420
+    prompt: str, image_path: str = "", aspect: str = "", out_dir: str = "", name: str = "", timeout_s: int = 0
 ) -> dict:
     """EXPERIMENTAL: make a Grok Imagine video (about 6 s) from a prompt, optionally animating a local image
     (image_path: jpg/png/webp). Videos cost much more quota than images and are capped by max_videos_per_day
     (see grok_usage). Relies on Grok's current web UI, which changes often. Returns {"files": [mp4 path]}."""
+    aspect = aspect or S["default_aspect"]
     if aspect not in ASPECTS:
         raise BridgeError(f"aspect must be one of {', '.join(ASPECTS)}")
     params = {"prompt": prompt, "aspect": aspect}
@@ -655,22 +694,37 @@ async def grok_generate_video(
     elif not prompt.strip():
         raise BridgeError("give a prompt, an image_path, or both")
     check_budget(videos=1)
-    data = await hub.run("video", params, int(timeout_s))
+    data = await hub.run("video", params, int(timeout_s or S["video_timeout_s"]))
     if not data.get("files"):
         raise BridgeError("grok returned no video")
     return {"files": _save(data["files"], out_dir, _name(name, prompt))[0], "secs": data.get("secs"), "experimental": True}
 
 
 def main():
-    if len(sys.argv) > 1 and sys.argv[1] in ("--version", "-V"):
+    arg = sys.argv[1] if len(sys.argv) > 1 else ""
+    if arg in ("--version", "-V"):
         print(f"grok-web-mcp {__version__}")
-        return
-    if len(sys.argv) > 1 and sys.argv[1] == "--init":  # create token/limits files without starting the server
-        load_token()
+    elif arg == "--init":  # write config.json and limits.json (and token.txt when required) without starting the server
+        made = settings.write_template()
         load_limits()
-        print(f"grok-web-mcp {__version__}: config in {HOME}, images saved under {OUTPUT}")
-        return
-    mcp.run()  # stdio
+        load_token()
+        print(f"grok-web-mcp {__version__}: {'created' if made else 'kept the existing'} {CONFIG_FILE}")
+        print(f"images are saved under {OUTPUT}")
+    elif arg == "--config":  # the settings in effect and where each one came from
+        width = max(map(len, S))
+        for k, v in S.items():
+            print(f"{k:<{width}}  {json.dumps(v):<18} ({SOURCES[k]})")
+        print(f"\nconfig file: {CONFIG_FILE}")
+    elif arg in ("-h", "--help"):
+        print(
+            "grok-web-mcp: MCP server (stdio) for Grok Imagine through your own grok.com tab\n"
+            "  (no args)   run the MCP server (your MCP client starts it)\n"
+            "  --init      write ~/.grok-web-mcp/config.json with every setting at its default\n"
+            "  --config    show the settings in effect and where each one came from\n"
+            "  --version   print the version"
+        )
+    else:
+        mcp.run()  # stdio
 
 
 if __name__ == "__main__":

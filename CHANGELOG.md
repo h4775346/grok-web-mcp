@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.0 (2026-10-26)
+
+- Settings: `~/.grok-web-mcp/config.json` and `GROK_WEB_MCP_<KEY>` environment variables (env wins).
+  New keys: `default_aspect`, `default_mode`, `default_n`, `image_timeout_s`, `video_timeout_s`, `quota_guard`,
+  `pin_extension`, `extension_ids`, `require_peer_token`, `port`, `output_dir`.
+- The local peer token is now optional (`require_peer_token`, on by default) and documented: the extension never needs
+  it and users never handle it.
+- New tool `grok_settings`; new CLI flags `--init` (writes config.json), `--config` and `--help`.
+- Only a `chrome-extension://` origin may take the extension role.
+- Invalid settings stop the server at start with a clear message.
+
 ## 0.3.0 (2026-10-26)
 
 First public release.

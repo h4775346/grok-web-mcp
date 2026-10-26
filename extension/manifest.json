@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Grok Web MCP",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Lets your local grok-web-mcp server (an MCP server for Claude, Cursor, VS Code...) run Grok Imagine jobs in your own grok.com tab.",
   "permissions": ["storage", "alarms"],
   "host_permissions": ["https://grok.com/*"],

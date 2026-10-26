@@ -44,6 +44,7 @@ JPGs land in a folder a few seconds later.
 - 🛡️ **Quota guard**: a per-day ledger with limits you control, so an over-eager agent cannot burn your daily Grok allowance.
 - 🔁 **Multi-session**: open five Claude Code windows; the first becomes the hub and the rest queue through it.
 - 🔒 **Local and locked down**: loopback only, web pages refused, only your pinned extension id may run jobs.
+- ⚙️ **Configurable**: default aspect, mode, image count, timeouts and every protection, via `config.json` or env vars.
 - 💾 **Never overwrites**: files are saved as `name_1.jpg`, `name_2.jpg`, `name_1_2.jpg`…
 
 ## Quick start
@@ -146,6 +147,7 @@ Use the same Chrome profile. That's it. Ask your assistant:
 | `grok_status` | Is the extension connected, is a grok tab open, are you logged in. |
 | `grok_usage` | Today's submissions, images and videos against your limits. |
 | `grok_set_limits` | Change the daily limits (the agent is told to ask you first). |
+| `grok_settings` | The settings in effect, where each one came from, and what each does. |
 
 <details>
 <summary>Example calls</summary>
@@ -188,25 +190,63 @@ A refusal tells the agent exactly where it stands, for example
 `Grok budget: this needs 2 image submission(s) but 29/30 are already used today, so nothing was submitted.`
 A job that fails *after* it was submitted (moderation, timeout) still counts, because Grok still charged it.
 
-## Configuration
+## Settings
 
-| Environment variable | Default | Meaning |
+Everything works out of the box; nothing below needs to be set. To change a default, either:
+
+- edit `~/.grok-web-mcp/config.json` (run `grok-web-mcp --init` once to create it with every key), or
+- set an environment variable `GROK_WEB_MCP_<KEY>` (for example `GROK_WEB_MCP_DEFAULT_ASPECT=9:16`), which wins over the file.
+
+Check what is in effect with `grok-web-mcp --config` or the `grok_settings` tool. Settings are read when the server
+starts, so restart your MCP client after a change.
+
+| Key | Default | What it does |
 |---|---|---|
-| `GROK_WEB_MCP_OUTPUT_DIR` | `~/grok-web-mcp` | Where relative `out_dir` / `image_path` values resolve. |
-| `GROK_WEB_MCP_HOME` | `~/.grok-web-mcp` | Token, usage ledger, limits and pinned extension ids. |
-| `GROK_WEB_MCP_PORT` | `8799` | Local WebSocket port (set the same port in the extension popup). |
-| `GROK_WEB_MCP_EXTENSION_IDS` | *(empty)* | Comma-separated extension ids allowed in addition to the pinned one. |
+| `output_dir` | `~/grok-web-mcp` | Folder that relative `out_dir` / `image_path` values resolve against. |
+| `default_aspect` | `16:9` | Aspect ratio when a call does not give one (`16:9`, `9:16`, `1:1`, `2:3`, `3:2`). |
+| `default_mode` | `""` | `speed` or `quality` when a call does not give one; `""` leaves the page as it is. |
+| `default_n` | `1` | Images to keep per call when a call does not give `n` (1–4). |
+| `image_timeout_s` | `180` | Seconds to wait for an image submission. |
+| `video_timeout_s` | `420` | Seconds to wait for a video. |
+| `quota_guard` | `true` | Refuse jobs over the daily limits in `limits.json`. Usage is still recorded when off. |
+| `pin_extension` | `true` | Trust only the first Chrome extension id that connects. |
+| `extension_ids` | `[]` | Extension ids always allowed (env: comma-separated). |
+| `require_peer_token` | `true` | Require the local peer token (see below). |
+| `port` | `8799` | Local WebSocket port; set the same port in the extension popup. |
 
-Pass them with `-e` in Claude Code (`claude mcp add -e GROK_WEB_MCP_OUTPUT_DIR=~/Pictures/grok ...`) or an `"env"` block in JSON configs.
+`GROK_WEB_MCP_HOME` (default `~/.grok-web-mcp`) moves the whole settings folder. Example for Claude Code:
+
+```bash
+claude mcp add -s user grok-web -e GROK_WEB_MCP_DEFAULT_ASPECT=9:16 -e GROK_WEB_MCP_DEFAULT_MODE=quality \
+  -- uvx --from git+https://github.com/h4775346/grok-web-mcp grok-web-mcp
+```
+
+In JSON configs, put the same variables in an `"env": { ... }` block.
+
+### Do I need to do anything with a token?
+
+**No.** You never copy, paste or type a token, and the Chrome extension does not use one.
+
+Here is why it exists. Each MCP client window starts its own copy of the server. Only the first copy can listen on
+the port and talk to Chrome; the others send their jobs to it over the local socket, so all your windows share one
+queue and one daily budget. Something has to prove that such a connection really comes from another copy of
+grok-web-mcp and not from some other program on your computer trying to spend your Grok quota. That proof is a random
+token that the first copy writes to `~/.grok-web-mcp/token.txt` and every copy reads by itself.
+
+It is **optional**. If you only ever run one MCP client, or you trust every program on your computer, set
+`require_peer_token` to `false` and no token file is created or checked. Web pages stay blocked and the extension pin
+still applies either way.
 
 ## Security
 
-- The WebSocket listens on **127.0.0.1 only**.
-- Connections from **web pages are refused** (any `http(s)://` Origin), so a site you visit cannot drive your Grok account.
-- The **first extension id that connects is pinned** in `~/.grok-web-mcp/extensions.json`; other extensions are refused.
-  Reinstalled from a different folder? Edit that file or set `GROK_WEB_MCP_EXTENSION_IDS`.
-- Other local processes (a second MCP session) must present a random token from `~/.grok-web-mcp/token.txt`.
-- The extension only has access to `https://grok.com/*`. It does not read or send your password or cookies anywhere; it works inside the page you are already logged into, and results go only to the local server.
+- The WebSocket listens on **127.0.0.1 only** (not configurable).
+- Connections from **web pages are always refused** (any `http(s)://` Origin), so a site you visit cannot drive your Grok account.
+- Only a real `chrome-extension://` origin can act as the extension, and by default only the **first extension id that
+  connects** (pinned in `~/.grok-web-mcp/extensions.json`). Reinstalled from a different folder? Edit that file, add the
+  id to `extension_ids`, or turn `pin_extension` off.
+- A second MCP session proves itself with the local peer token (automatic; optional, see above).
+- The extension only has access to `https://grok.com/*`. It does not read or send your password or cookies anywhere;
+  it works inside the page you are already logged into, and results go only to the local server.
 
 See [SECURITY.md](SECURITY.md) to report a vulnerability.
 
@@ -216,7 +256,9 @@ See [SECURITY.md](SECURITY.md) to report a vulnerability.
 |---|---|
 | `no extension connected` | Chrome is closed, or the extension is not loaded. Open Chrome; the badge should say **on**. |
 | Badge says **off** | Your MCP client is not running the server, or the ports differ. Check `grok_status` and the popup's port. |
-| Badge says **not allowed** | Another extension id was pinned first. Edit `~/.grok-web-mcp/extensions.json`. |
+| Badge says **not allowed** | Another extension id was pinned first. Edit `~/.grok-web-mcp/extensions.json` or set `pin_extension` to `false`. |
+| `bad token` from a second session | Two sessions use different `GROK_WEB_MCP_HOME` folders. Point them at the same one, or set `require_peer_token` to `false`. |
+| `invalid setting: ...` at start | A value in `config.json` or a `GROK_WEB_MCP_*` variable is wrong; `grok-web-mcp --config` shows which. |
 | `not_logged_in` | Log in at grok.com in that Chrome profile. |
 | `timeout: no images appeared` | The prompt was moderated, you hit Grok's rate limit, or Grok changed its page. |
 | Jobs are slow when the tab is hidden | Keep *Bring the grok tab to front* on in the popup (Chrome throttles hidden tabs). |

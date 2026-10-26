@@ -37,8 +37,8 @@ def jpeg(w=1792, h=1008) -> bytes:  # what Grok returns for 16:9
 JPG, MP4 = jpeg(), b"\x00\x00\x00\x18ftypmp42fake-video-bytes"
 
 
-async def fake_extension(url: str, seen: dict, ready: asyncio.Event):
-    async with connect(url, max_size=None, additional_headers={"Origin": EXT_ORIGIN}) as ws:
+async def fake_extension(url: str, seen: dict, ready: asyncio.Event, origin: str = EXT_ORIGIN):
+    async with connect(url, max_size=None, additional_headers={"Origin": origin}) as ws:
         await ws.send(json.dumps({"type": "hello", "role": "extension", "version": "fake"}))
         assert json.loads(await ws.recv())["type"] == "welcome"
         ready.set()
@@ -129,7 +129,7 @@ async def scenario(tmp: Path):
 
         # ---- socket auth
         assert await close_code(url, {"role": "peer", "token": "wrong"}) == 4001, "wrong token rejected"
-        assert await close_code(url, {"role": "extension"}) == 4001, "extension hello without Origin needs the token"
+        assert await close_code(url, {"role": "extension"}) == 4004, "extension role needs a chrome-extension origin"
         assert await close_code(url, {"role": "extension", "token": token}, "https://evil.example") == 4003, "web page refused"
 
         ready = asyncio.Event()
