@@ -23,5 +23,8 @@ jobs:
           (cd extension && zip -r ../dist/grok-web-mcp-extension.zip .)
       - uses: softprops/action-gh-release@v2
         with:
-          files: dist/*
+          files: |
+            dist/*.whl
+            dist/*.tar.gz
+            dist/*.zip
           generate_release_notes: true
