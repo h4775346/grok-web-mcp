@@ -1,0 +1,28 @@
+name: Bug report
+description: Something does not work
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: Include the exact error message returned by the tool.
+    validations:
+      required: true
+  - type: textarea
+    id: status
+    attributes:
+      label: Output of grok_status
+      render: json
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: grok-web-mcp --version, extension version (popup), Chrome version, OS, MCP client
+    validations:
+      required: true
+  - type: textarea
+    id: page
+    attributes:
+      label: Did grok.com change?
+      description: A screenshot of grok.com/imagine helps a lot when selectors break.

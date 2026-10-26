@@ -1,0 +1,31 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body { font: 13px system-ui, sans-serif; width: 300px; margin: 12px; color: #1f2328; }
+  h1 { font-size: 14px; margin: 0 0 8px; display: flex; align-items: center; gap: 6px; }
+  h1 img { width: 18px; height: 18px; }
+  .row { margin: 8px 0; }
+  #state { font-weight: 600; }
+  .ok { color: #1a7f37; } .bad { color: #b42318; }
+  #err, #job, #meta { color: #57606a; font-size: 12px; word-break: break-word; }
+  input[type=number] { width: 80px; padding: 3px; }
+  a { color: #0969da; }
+</style>
+</head>
+<body>
+  <h1><img src="icons/32.png" alt="">Grok Web MCP</h1>
+  <div class="row">Status: <span id="state">...</span></div>
+  <div class="row" id="err"></div>
+  <div class="row" id="job"></div>
+  <div class="row"><label><input id="activate" type="checkbox"> Bring the grok tab to front while a job runs</label></div>
+  <div class="row">
+    <label for="port">Server port</label> <input id="port" type="number" min="1024" max="65535">
+    <button id="save">Save</button> <button id="reconnect">Reconnect</button>
+  </div>
+  <div class="row" id="meta"></div>
+  <div class="row"><a href="https://github.com/h4775346/grok-web-mcp#troubleshooting" target="_blank">Troubleshooting</a></div>
+  <script src="popup.js"></script>
+</body>
+</html>

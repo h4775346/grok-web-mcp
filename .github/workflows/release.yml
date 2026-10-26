@@ -1,0 +1,27 @@
+name: Release
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Check versions match the tag
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          grep -q "__version__ = \"$tag\"" src/grok_web_mcp/__init__.py
+          grep -q "\"version\": \"$tag\"" extension/manifest.json
+      - name: Build
+        run: |
+          uv build
+          (cd extension && zip -r ../dist/grok-web-mcp-extension.zip .)
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true

@@ -1,0 +1,64 @@
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[project]
+name = "grok-web-mcp"
+dynamic = ["version"]
+description = "MCP server for Grok Imagine (images + video) through your own logged-in grok.com tab: no xAI API key, uses your Grok plan"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.10"
+authors = [{ name = "h4775346" }]
+keywords = ["mcp", "model-context-protocol", "grok", "grok-imagine", "xai", "image-generation", "video-generation",
+            "claude", "claude-code", "cursor", "chrome-extension", "ai-art"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Multimedia :: Graphics",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "mcp>=1.10,<2",
+    "websockets>=13",
+    "pillow>=10",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[project.urls]
+Homepage = "https://github.com/h4775346/grok-web-mcp"
+Issues = "https://github.com/h4775346/grok-web-mcp/issues"
+Changelog = "https://github.com/h4775346/grok-web-mcp/blob/main/CHANGELOG.md"
+
+[project.scripts]
+grok-web-mcp = "grok_web_mcp.server:main"
+
+[tool.hatch.version]
+path = "src/grok_web_mcp/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/grok_web_mcp"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src", "tests", "extension", "README.md", "LICENSE", "CHANGELOG.md"]
+
+[tool.ruff]
+line-length = 130
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "B", "UP", "I"]
+ignore = ["E501", "B008", "UP007", "UP045"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

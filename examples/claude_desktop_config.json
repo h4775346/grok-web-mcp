@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "grok-web": {
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/h4775346/grok-web-mcp", "grok-web-mcp"],
+      "env": { "GROK_WEB_MCP_OUTPUT_DIR": "~/Pictures/grok" }
+    }
+  }
+}
