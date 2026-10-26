@@ -12,7 +12,7 @@ license-files = ["LICENSE"]
 requires-python = ">=3.10"
 authors = [{ name = "h4775346" }]
 keywords = ["mcp", "model-context-protocol", "grok", "grok-imagine", "xai", "image-generation", "video-generation",
-            "claude", "claude-code", "cursor", "chrome-extension", "ai-art"]
+            "claude", "claude-code", "cursor", "codex", "gemini-cli", "windsurf", "ai-agents", "chrome-extension", "ai-art"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Console",
@@ -62,3 +62,4 @@ ignore = ["E501", "B008", "UP007", "UP045"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning"]

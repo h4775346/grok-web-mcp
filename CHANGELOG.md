@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.0 (2026-10-26)
+
+- Works with every MCP agent: new `--http [PORT]` (Streamable HTTP) and `--sse [PORT]` transports; all HTTP sessions
+  share one hub, queue and budget. Install docs for Claude Code, Codex, Gemini CLI, VS Code, Cursor, Claude Desktop,
+  Windsurf, Cline, Roo/Kilo Code, Kiro, Amazon Q, JetBrains, LM Studio, Warp, Zed, Goose, OpenCode and Continue,
+  plus one-click install buttons for Cursor and VS Code.
+- Redesigned extension popup (monochrome, light and dark), new icon and logo.
+- Screenshots in the README.
+
 ## 0.4.0 (2026-10-26)
 
 - Settings: `~/.grok-web-mcp/config.json` and `GROK_WEB_MCP_<KEY>` environment variables (env wins).

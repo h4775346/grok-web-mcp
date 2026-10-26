@@ -446,18 +446,24 @@ def _save(
 
 # -------------------------------------------------------------------- MCP
 hub: Hub | None = None
+_sessions = 0  # HTTP transports open one MCP session per client; they all share one hub
 
 
 @asynccontextmanager
 async def lifespan(_app):
-    global hub
-    hub = Hub(load_token())
-    load_limits()  # creates the limits file with defaults on first run
-    await hub.start()
+    global hub, _sessions
+    if hub is None:
+        hub = Hub(load_token())
+        load_limits()  # creates the limits file with defaults on first run
+        await hub.start()
+    _sessions += 1
     try:
         yield
     finally:
-        await hub.stop()
+        _sessions -= 1
+        if _sessions == 0:
+            await hub.stop()
+            hub = None
 
 
 mcp = FastMCP("grok-web-mcp", lifespan=lifespan)
@@ -700,8 +706,19 @@ async def grok_generate_video(
     return {"files": _save(data["files"], out_dir, _name(name, prompt))[0], "secs": data.get("secs"), "experimental": True}
 
 
+USAGE = """grok-web-mcp: MCP server for Grok Imagine through your own grok.com tab
+
+  grok-web-mcp                 stdio server (what Claude, Cursor, VS Code, Codex, Gemini CLI... launch)
+  grok-web-mcp --http [PORT]   Streamable HTTP server on http://127.0.0.1:PORT/mcp (default 8000)
+  grok-web-mcp --sse [PORT]    legacy SSE server on http://127.0.0.1:PORT/sse (default 8000)
+  grok-web-mcp --init          write ~/.grok-web-mcp/config.json with every setting at its default
+  grok-web-mcp --config        show the settings in effect and where each one came from
+  grok-web-mcp --version       print the version"""
+
+
 def main():
-    arg = sys.argv[1] if len(sys.argv) > 1 else ""
+    args = sys.argv[1:]
+    arg = args[0] if args else ""
     if arg in ("--version", "-V"):
         print(f"grok-web-mcp {__version__}")
     elif arg == "--init":  # write config.json and limits.json (and token.txt when required) without starting the server
@@ -715,14 +732,18 @@ def main():
         for k, v in S.items():
             print(f"{k:<{width}}  {json.dumps(v):<18} ({SOURCES[k]})")
         print(f"\nconfig file: {CONFIG_FILE}")
+    elif arg in ("--http", "--sse"):
+        port = int(args[1]) if len(args) > 1 else 8000
+        if port == PORT:
+            sys.exit(f"[grok-web-mcp] port {port} is the extension bridge port; pick another for {arg}")
+        mcp.settings.host, mcp.settings.port = HOST, port  # loopback only, like the bridge
+        transport = "streamable-http" if arg == "--http" else "sse"
+        log(f"{transport} MCP endpoint on http://{HOST}:{port}{'/mcp' if arg == '--http' else '/sse'}")
+        mcp.run(transport=transport)
     elif arg in ("-h", "--help"):
-        print(
-            "grok-web-mcp: MCP server (stdio) for Grok Imagine through your own grok.com tab\n"
-            "  (no args)   run the MCP server (your MCP client starts it)\n"
-            "  --init      write ~/.grok-web-mcp/config.json with every setting at its default\n"
-            "  --config    show the settings in effect and where each one came from\n"
-            "  --version   print the version"
-        )
+        print(USAGE)
+    elif arg:
+        sys.exit(f"unknown option {arg}\n\n{USAGE}")
     else:
         mcp.run()  # stdio
 

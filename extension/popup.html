@@ -3,29 +3,106 @@
 <head>
 <meta charset="utf-8">
 <style>
-  body { font: 13px system-ui, sans-serif; width: 300px; margin: 12px; color: #1f2328; }
-  h1 { font-size: 14px; margin: 0 0 8px; display: flex; align-items: center; gap: 6px; }
-  h1 img { width: 18px; height: 18px; }
-  .row { margin: 8px 0; }
-  #state { font-weight: 600; }
-  .ok { color: #1a7f37; } .bad { color: #b42318; }
-  #err, #job, #meta { color: #57606a; font-size: 12px; word-break: break-word; }
-  input[type=number] { width: 80px; padding: 3px; }
-  a { color: #0969da; }
+  /* Monochrome, like grok.com: ink, paper and greys. Colour only means status. */
+  :root {
+    --bg: #000; --surface: #0f0f0f; --raise: #1a1a1a; --line: #262626; --line-strong: #3a3a3a;
+    --fg: #fafafa; --muted: #8f8f8f; --faint: #5c5c5c;
+    --btn-bg: #fafafa; --btn-fg: #000;
+    --ok: #34c759; --warn: #ffb020; --bad: #ff453a;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #fff; --surface: #f7f7f7; --raise: #efefef; --line: #e6e6e6; --line-strong: #d0d0d0;
+      --fg: #0a0a0a; --muted: #6b6b6b; --faint: #a3a3a3;
+      --btn-bg: #0a0a0a; --btn-fg: #fff;
+      --ok: #1f9d46; --warn: #b7791f; --bad: #d92d20;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    width: 320px; margin: 0; padding: 16px; background: var(--bg); color: var(--fg);
+    font: 13px/1.45 ui-sans-serif, -apple-system, "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  header { display: flex; align-items: center; gap: 10px; }
+  header img { width: 26px; height: 26px; border-radius: 7px; }
+  header h1 { flex: 1; margin: 0; font-size: 14px; font-weight: 600; letter-spacing: -0.01em; }
+  header a { color: var(--muted); text-decoration: none; font-size: 12px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); }
+  header a:hover { color: var(--fg); border-color: var(--line-strong); }
+
+  .status { margin: 16px 0 12px; padding: 16px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); }
+  .status-row { display: flex; align-items: center; gap: 10px; }
+  .dot { position: relative; width: 10px; height: 10px; border-radius: 50%; background: var(--faint); flex: none; }
+  .dot::after { content: ""; position: absolute; inset: -4px; border-radius: 50%; border: 2px solid currentColor; opacity: 0; color: inherit; }
+  .ok .dot { background: var(--ok); color: var(--ok); }
+  .ok .dot::after { animation: ping 2.4s ease-out infinite; }
+  .busy .dot { background: var(--warn); color: var(--warn); }
+  .busy .dot::after { animation: ping 1.2s ease-out infinite; }
+  .bad .dot { background: var(--bad); }
+  @keyframes ping { 0% { transform: scale(.6); opacity: .7; } 100% { transform: scale(1.6); opacity: 0; } }
+  #title { flex: 1; font-size: 20px; font-weight: 600; letter-spacing: -0.02em; }
+  #sub { margin-top: 4px; color: var(--muted); font-size: 12px; }
+  #sub code { font: 12px ui-monospace, "Cascadia Mono", Consolas, monospace; color: var(--fg); }
+  #err { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+  #err:empty, #job:empty { display: none; }
+  #job { margin-top: 10px; padding: 8px 10px; border-radius: 10px; background: var(--raise); font-size: 12px; color: var(--muted);
+         white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .row { display: flex; align-items: center; gap: 10px; padding: 12px 2px; border-bottom: 1px solid var(--line); }
+  .row:last-of-type { border-bottom: 0; }
+  .row .label { flex: 1; }
+  .row .label { min-width: 0; }
+  .row .label small { display: block; color: var(--muted); font-size: 11.5px; white-space: nowrap; }
+
+  .switch { position: relative; width: 36px; height: 22px; flex: none; }
+  .switch input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; z-index: 1; }
+  .switch span { position: absolute; inset: 0; border-radius: 999px; background: var(--raise); border: 1px solid var(--line-strong); transition: .2s; }
+  .switch span::before { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--muted); transition: .2s; }
+  .switch input:checked + span { background: var(--fg); border-color: var(--fg); }
+  .switch input:checked + span::before { transform: translateX(14px); background: var(--bg); }
+  .switch input:focus-visible + span { outline: 2px solid var(--fg); outline-offset: 2px; }
+
+  .port { display: flex; align-items: center; gap: 6px; padding: 3px 3px 3px 12px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); }
+  .port:focus-within { border-color: var(--line-strong); }
+  .port input { width: 52px; border: 0; background: transparent; color: var(--fg); font: 13px ui-monospace, "Cascadia Mono", Consolas, monospace; outline: none; }
+  .port input::-webkit-inner-spin-button { display: none; }
+  button { font: inherit; font-weight: 600; font-size: 12px; border: 0; border-radius: 999px; cursor: pointer; transition: opacity .15s, transform .1s; }
+  button:active { transform: scale(.96); }
+  #save { padding: 5px 12px; background: var(--btn-bg); color: var(--btn-fg); }
+  #save:hover { opacity: .85; }
+  #reconnect { width: 28px; height: 28px; background: transparent; color: var(--muted); border: 1px solid var(--line); font-size: 14px; }
+  #reconnect:hover { color: var(--fg); }
+  #reconnect:hover { border-color: var(--line-strong); }
+
+  footer { margin-top: 12px; display: flex; justify-content: space-between; align-items: center; color: var(--faint);
+           font: 11px ui-monospace, "Cascadia Mono", Consolas, monospace; }
+  footer span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 230px; }
 </style>
 </head>
 <body>
-  <h1><img src="icons/32.png" alt="">Grok Web MCP</h1>
-  <div class="row">Status: <span id="state">...</span></div>
-  <div class="row" id="err"></div>
-  <div class="row" id="job"></div>
-  <div class="row"><label><input id="activate" type="checkbox"> Bring the grok tab to front while a job runs</label></div>
+  <header>
+    <img src="icons/48.png" alt="">
+    <h1>Grok Web MCP</h1>
+    <a href="https://github.com/h4775346/grok-web-mcp#troubleshooting" target="_blank">Help</a>
+  </header>
+
+  <section class="status" id="status">
+    <div class="status-row"><i class="dot"></i><span id="title">…</span><button id="reconnect" title="Reconnect now">↻</button></div>
+    <div id="sub"></div>
+    <div id="job"></div>
+    <div id="err"></div>
+  </section>
+
   <div class="row">
-    <label for="port">Server port</label> <input id="port" type="number" min="1024" max="65535">
-    <button id="save">Save</button> <button id="reconnect">Reconnect</button>
+    <div class="label">Bring Grok to front<small>Jobs run faster in a visible tab</small></div>
+    <label class="switch"><input id="activate" type="checkbox"><span></span></label>
   </div>
-  <div class="row" id="meta"></div>
-  <div class="row"><a href="https://github.com/h4775346/grok-web-mcp#troubleshooting" target="_blank">Troubleshooting</a></div>
+  <div class="row">
+    <div class="label">Server port<small>Must match the server</small></div>
+    <div class="port"><input id="port" type="number" min="1024" max="65535"><button id="save">Save</button></div>
+  </div>
+
+  <footer><span id="meta"></span><span id="ver"></span></footer>
   <script src="popup.js"></script>
 </body>
 </html>
