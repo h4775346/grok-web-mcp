@@ -36,6 +36,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
+from mcp.types import ToolAnnotations
 from websockets.asyncio.client import connect
 from websockets.asyncio.server import serve
 from websockets.exceptions import ConnectionClosed
@@ -469,13 +470,28 @@ async def lifespan(_app):
 mcp = FastMCP("grok-web-mcp", lifespan=lifespan)
 
 
-@mcp.tool()
+def _hints(read_only: bool, destructive: bool, idempotent: bool, open_world: bool) -> ToolAnnotations:
+    """MCP tool annotations: all four hints set explicitly, so hosts can tell users what a tool does before it runs.
+    open_world = the tool reaches grok.com through the browser; generation is never idempotent (each call is a new
+    Grok submission) and never destructive (files are never overwritten)."""
+    return ToolAnnotations(
+        readOnlyHint=read_only, destructiveHint=destructive, idempotentHint=idempotent, openWorldHint=open_world
+    )
+
+
+@mcp.tool(
+    title="Bridge status",
+    annotations=_hints(read_only=True, destructive=False, idempotent=True, open_world=True),
+)
 async def grok_status() -> dict:
     """Bridge health: is the Chrome extension connected, is a grok.com/imagine tab open, is the user logged in."""
     return await hub.run("status", {}, 20)
 
 
-@mcp.tool()
+@mcp.tool(
+    title="Settings in effect",
+    annotations=_hints(read_only=True, destructive=False, idempotent=True, open_world=False),
+)
 async def grok_settings() -> dict:
     """The settings in effect (defaults < config.json < GROK_WEB_MCP_* env vars), where each came from, and what each
     one does. Settings are read when the server starts; restart the MCP client after changing them."""
@@ -487,7 +503,10 @@ async def grok_settings() -> dict:
     }
 
 
-@mcp.tool()
+@mcp.tool(
+    title="Today's usage and limits",
+    annotations=_hints(read_only=True, destructive=False, idempotent=True, open_world=False),
+)
 async def grok_usage() -> dict:
     """Today's Grok Imagine usage (image submissions, images generated/kept, videos) against the daily limits."""
     lim, u = load_limits(), usage_today()
@@ -505,7 +524,10 @@ async def grok_usage() -> dict:
     }
 
 
-@mcp.tool()
+@mcp.tool(
+    title="Change daily limits",
+    annotations=_hints(read_only=False, destructive=False, idempotent=True, open_world=False),
+)
 async def grok_set_limits(
     max_image_submissions_per_day: int | None = None,
     max_videos_per_day: int | None = None,
@@ -591,7 +613,10 @@ async def _image(j: dict, out_dir, name, timeout_s, keep_original) -> dict:
     return out
 
 
-@mcp.tool()
+@mcp.tool(
+    title="Generate images with Grok Imagine",
+    annotations=_hints(read_only=False, destructive=False, idempotent=False, open_world=True),
+)
 async def grok_generate_image(
     prompt: str,
     aspect: str = "",
@@ -621,7 +646,10 @@ async def grok_generate_image(
     return await _image(j, out_dir, name, timeout_s or S["image_timeout_s"], keep_original)
 
 
-@mcp.tool()
+@mcp.tool(
+    title="Generate a batch of images",
+    annotations=_hints(read_only=False, destructive=False, idempotent=False, open_world=True),
+)
 async def grok_batch(jobs: list[dict], out_dir: str = "", confirm: bool = False) -> dict:
     """Run several image jobs one after another. Each job: {"prompt", "name", "aspect"?, "n"? (1..4, default 1),
     "mode"?, "max_side"?, "size"?, "keep_original"?, "timeout_s"?, "out_dir"?}.
@@ -680,7 +708,10 @@ async def grok_batch(jobs: list[dict], out_dir: str = "", confirm: bool = False)
     return {"results": results, "submissions_planned": total, "usage": usage_today()}
 
 
-@mcp.tool()
+@mcp.tool(
+    title="Generate a video with Grok Imagine (experimental)",
+    annotations=_hints(read_only=False, destructive=False, idempotent=False, open_world=True),
+)
 async def grok_generate_video(
     prompt: str, image_path: str = "", aspect: str = "", out_dir: str = "", name: str = "", timeout_s: int = 0
 ) -> dict:

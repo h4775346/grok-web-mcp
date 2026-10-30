@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.1 (2026-10-30)
+
+- Every tool now has a title and all four MCP tool annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`,
+  `openWorldHint`), so hosts can tell users what a tool does before it runs. Status, settings and usage are read-only;
+  generation tools are marked non-idempotent and open-world (they reach grok.com) but never destructive.
+
 ## 0.5.0 (2026-10-26)
 
 - Works with every MCP agent: new `--http [PORT]` (Streamable HTTP) and `--sse [PORT]` transports; all HTTP sessions

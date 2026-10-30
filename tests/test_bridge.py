@@ -103,7 +103,15 @@ async def scenario(tmp: Path):
     seen: dict = {}
     async with stdio_client(params) as (r, w), ClientSession(r, w) as hub:
         await hub.initialize()
-        tools = {t.name for t in (await hub.list_tools()).tools}
+        listed = (await hub.list_tools()).tools
+        tools = {t.name for t in listed}
+        for t in listed:  # every tool declares all four hints (hosts and directories such as OpenAI's require it)
+            a = t.annotations
+            assert t.title and a, t.name
+            assert all(
+                isinstance(getattr(a, h), bool) for h in ("readOnlyHint", "destructiveHint", "idempotentHint", "openWorldHint")
+            ), t.name
+        assert {t.name for t in listed if t.annotations.readOnlyHint} == {"grok_status", "grok_settings", "grok_usage"}
         assert {
             "grok_status",
             "grok_generate_image",

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Grok Web MCP",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Grok Imagine for any AI agent (Claude, Codex, Gemini, Cursor...): runs jobs from your local grok-web-mcp in your grok.com tab.",
   "permissions": ["storage", "alarms"],
   "host_permissions": ["https://grok.com/*"],
